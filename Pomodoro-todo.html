@@ -1,0 +1,1342 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>番茄鐘</title>
+<script>
+/* 先套用主題，避免畫面閃爍 */
+(function () {
+  try {
+    var d = JSON.parse(localStorage.getItem('pomodoro-study-v1') || 'null');
+    var t = d && d.settings && d.settings.theme;
+    var dark = t === 'dark' || (t !== 'light' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  } catch (e) {}
+})();
+</script>
+<style>
+:root {
+  --bg: #f6f4ef; --card: #ffffff; --text: #1f2328; --muted: #5c636b; --line: #ddd9cf;
+  --accent: #c8452d; --on-accent: #ffffff; --break: #2f7d4f; --soft: #eeebe3;
+  --danger: #b3261e; --shadow: 0 1px 3px rgba(0,0,0,.08); color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #14161a; --card: #1e2227; --text: #e8eaed; --muted: #a3abb5; --line: #343a43;
+  --accent: #f0715a; --on-accent: #1b0e0a; --break: #62c18b; --soft: #272c33;
+  --danger: #ff8a80; --shadow: none; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  overflow-wrap: anywhere;
+}
+body.flash { animation: flash .5s ease 3; }
+@keyframes flash { 0%, 100% { background: var(--bg); } 50% { background: var(--accent); } }
+.app { max-width: 720px; margin: 0 auto; padding: 0 16px 56px; }
+header.top { display: flex; align-items: center; justify-content: space-between; padding: 14px 0 6px; gap: 8px; }
+h1 { font-size: 1.2rem; margin: 0; }
+h2 { font-size: 1.05rem; margin: 0 0 8px; }
+h3 { font-size: 1rem; margin: 0; }
+.hbtns { display: flex; gap: 6px; }
+.icon-btn {
+  width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--card);
+  color: var(--text); font-size: 1.2rem; cursor: pointer; display: grid; place-items: center;
+}
+.tabwrap { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 6px 0 10px; }
+.tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; background: var(--soft); padding: 4px; border-radius: 12px; }
+.tab { min-height: 44px; border: 0; background: transparent; color: var(--muted); font: inherit; font-weight: 600; border-radius: 9px; cursor: pointer; padding: 0 4px; }
+.tab[aria-selected="true"] { background: var(--card); color: var(--text); box-shadow: var(--shadow); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-bottom: 12px; box-shadow: var(--shadow); }
+.row { display: flex; gap: 8px; align-items: center; }
+.row > input { flex: 1; min-width: 0; }
+.muted { color: var(--muted); }
+.small { font-size: .875rem; }
+.hint { color: var(--muted); font-size: .875rem; margin: 8px 0 0; }
+.empty { text-align: center; color: var(--muted); padding: 28px 12px; }
+.warn-banner { background: var(--danger); color: #fff; padding: 10px 12px; border-radius: 10px; margin: 6px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+:root[data-theme="dark"] .warn-banner { color: #1b0e0a; }
+.warn-banner .btn { min-height: 36px; }
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea {
+  font: inherit; width: 100%; min-height: 44px; padding: 8px 12px; color: var(--text); background: var(--card);
+  border: 1px solid var(--line); border-radius: 10px;
+}
+textarea { resize: vertical; min-height: 80px; }
+label.field { display: block; }
+label.field > span { display: block; font-size: .875rem; color: var(--muted); margin-bottom: 4px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.btn {
+  min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--card);
+  color: var(--text); font: inherit; font-weight: 600; cursor: pointer;
+}
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.green { background: var(--break); border-color: var(--break); color: var(--on-accent); }
+:root:not([data-theme="dark"]) .btn.green { color: #fff; }
+.btn.danger { color: var(--danger); border-color: var(--danger); }
+.btn.sm { min-height: 40px; padding: 0 12px; font-size: .9rem; }
+.btn.lg { min-height: 54px; font-size: 1.1rem; padding: 0 28px; }
+
+/* 計時器 */
+.timer-top { text-align: center; margin-top: 4px; }
+.chip { display: inline-block; padding: 2px 14px; border-radius: 999px; background: var(--soft); color: var(--muted); font-weight: 700; font-size: .9rem; }
+.clock { position: relative; width: min(78vw, 280px); aspect-ratio: 1; margin: 10px auto; }
+.clock > svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring-bg { fill: none; stroke: var(--soft); stroke-width: 10; }
+.ring-fg { fill: none; stroke: var(--accent); stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset .3s linear; }
+.clock.is-break .ring-fg { stroke: var(--break); }
+.time-wrap { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.time { line-height: 1.05; font-size: clamp(3rem, 17vw, 4.8rem); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 1px; }
+.controls { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin: 6px 0 16px; }
+.k { font-size: .8rem; color: var(--muted); }
+.big { font-size: 1.15rem; font-weight: 700; }
+
+/* 科目 */
+.subj-head { display: flex; align-items: center; gap: 8px; }
+.subj-head h3 { flex: 1; min-width: 0; }
+.bar { height: 10px; background: var(--soft); border-radius: 999px; overflow: hidden; margin: 8px 0 4px; }
+.bar > i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.subj-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.chap { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; border-top: 1px solid var(--line); }
+.chap:first-child { border-top: 0; }
+label.check { display: flex; align-items: center; gap: 10px; flex: 1 1 140px; min-width: 0; min-height: 48px; cursor: pointer; }
+input[type="checkbox"] { width: 24px; height: 24px; flex: none; accent-color: var(--accent); }
+.chap.done .cname { color: var(--muted); text-decoration: line-through; }
+.chapters { margin-top: 10px; }
+
+/* 紀錄 */
+.rec-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.badge { font-size: .8rem; font-weight: 700; padding: 1px 10px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.badge.ok { color: var(--break); }
+.badge.no { color: var(--muted); }
+.rec .note { margin-top: 4px; white-space: pre-wrap; }
+.rec .rec-actions { margin-top: 8px; text-align: right; }
+.filters { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.filters .full { grid-column: 1 / -1; }
+
+/* 統計 */
+.seg { display: inline-flex; background: var(--soft); border-radius: 10px; padding: 3px; gap: 2px; }
+.seg button { min-height: 38px; padding: 0 12px; border: 0; background: transparent; color: var(--muted); font: inherit; font-weight: 600; border-radius: 8px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--card); color: var(--text); box-shadow: var(--shadow); }
+.stat-sum { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.stat-sum .num { font-size: 1.8rem; font-weight: 700; }
+.dist-row { margin: 10px 0; }
+.dist-row .line { display: flex; justify-content: space-between; gap: 8px; }
+.chart-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.chart-nav { display: flex; align-items: center; gap: 6px; margin: 8px 0; justify-content: space-between; }
+.chart-nav .lbl { flex: 1; text-align: center; font-weight: 600; }
+svg.chart { width: 100%; height: auto; display: block; }
+svg.chart .gl { stroke: var(--line); stroke-width: 1; }
+svg.chart .br { fill: var(--accent); }
+svg.chart text { fill: var(--muted); font-size: 10px; font-family: inherit; }
+
+/* Modal / toast */
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 50; }
+.modal { background: var(--card); color: var(--text); border-radius: 16px; max-width: 480px; width: 100%; max-height: 90vh; overflow: auto; padding: 20px; border: 1px solid var(--line); }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-top: 16px; }
+.err { color: var(--danger); font-size: .9rem; min-height: 1.2em; margin: 6px 0 0; }
+fieldset { border: 0; padding: 0; margin: 12px 0 0; min-width: 0; }
+legend { padding: 0; font-weight: 700; margin-bottom: 6px; }
+.scores { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.score { position: relative; display: block; }
+.score input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.score span { display: flex; align-items: center; justify-content: center; min-height: 52px; border: 1px solid var(--line); border-radius: 10px; font-weight: 700; font-size: 1.1rem; }
+.score input:checked + span { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.score input:focus-visible + span { outline: 3px solid var(--accent); outline-offset: 2px; }
+.score-legend { display: flex; justify-content: space-between; font-size: .8rem; color: var(--muted); margin-top: 4px; }
+.sect { margin-top: 16px; }
+.sect:first-of-type { margin-top: 0; }
+.stack { display: flex; flex-direction: column; gap: 8px; }
+#toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); background: var(--text); color: var(--bg);
+  padding: 10px 16px; border-radius: 10px; max-width: min(92vw, 440px); opacity: 0; pointer-events: none; transition: .25s; z-index: 80; text-align: center;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* 任務清單（計時器頁） */
+.task-now { background: var(--soft); border-radius: 10px; padding: 8px 12px; margin-bottom: 10px; }
+.tasklist { display: flex; flex-direction: column; gap: 10px; }
+.task-group { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.task-head { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 8px 12px; background: var(--soft); border: 0; color: var(--text); font: inherit; font-weight: 700; cursor: pointer; text-align: left; }
+.task-head .cnt { margin-left: auto; font-weight: 400; color: var(--muted); font-size: .85rem; white-space: nowrap; }
+.task { position: relative; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 12px; border-top: 1px solid var(--line); cursor: pointer; }
+.task input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.tmark { flex: none; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; }
+.task input:checked ~ .tmark { background: var(--accent); border-color: var(--accent); }
+.task input:checked ~ .tmark::after { content: '✓'; color: var(--on-accent); font-size: .85rem; font-weight: 700; }
+.task input:checked ~ .tname { font-weight: 700; }
+.task input:focus-visible ~ .tmark { outline: 3px solid var(--accent); outline-offset: 2px; }
+.task.done .tname { color: var(--muted); }
+.task-free { padding: 0 12px 10px; }
+
+/* 新增科目：草稿列 */
+.draft { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; border-style: dashed; animation: draft-in .22s ease-out; }
+.draft input { flex: 1 1 160px; min-width: 0; }
+@keyframes draft-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+
+/* 番茄角色 */
+.mascot { width: clamp(58px, 26%, 76px); height: auto; overflow: visible; flex: none; }
+.mascot .m-fruit { fill: var(--accent); }
+.mascot .m-leaf { fill: #4f9d5d; }
+:root[data-theme="dark"] .mascot .m-leaf { fill: #62c18b; }
+.mascot .m-shine { fill: #fff; opacity: .35; }
+.mascot .m-eye { fill: #2b1a17; }
+.mascot .m-glint { fill: #fff; }
+.mascot .m-line { fill: none; stroke: #2b1a17; stroke-width: 3.2; stroke-linecap: round; }
+.mascot .m-cheek { fill: #ff8fa3; opacity: .55; }
+.mascot .m-shadow { fill: #000; opacity: .12; }
+.mascot .mouth-open { fill: #6b1f1a; }
+.mascot .eyes-happy, .mascot .eyes-sleep, .mascot .mouth-open, .mascot .zzz, .mascot .note, .mascot .spark { display: none; }
+.m-paused .eyes-open, .m-break .eyes-open, .m-done .eyes-open { display: none; }
+.m-paused .eyes-sleep, .m-break .eyes-happy, .m-done .eyes-happy { display: inline; }
+.m-done .mouth-smile { display: none; }
+.m-done .mouth-open, .m-paused .zzz, .m-break .note, .m-done .spark { display: inline; }
+.mascot .m-body-g { transform-box: fill-box; transform-origin: 50% 100%; }
+.m-idle .m-body-g { animation: m-sway 4s ease-in-out infinite; }
+.m-focus .m-body-g { animation: m-breathe 3.2s ease-in-out infinite; }
+.m-break .m-body-g { animation: m-bob 2.4s ease-in-out infinite; }
+.m-done .m-body-g { animation: m-hop 1s ease-in-out infinite; }
+.m-idle .eyes-open { transform-box: fill-box; transform-origin: 50% 50%; animation: m-blink 4.5s infinite; }
+.mascot .zzz { fill: var(--muted); font-size: 12px; font-weight: 700; animation: m-float 2.4s ease-in-out infinite; }
+.mascot .zzz.z2 { font-size: 9px; animation-delay: .8s; }
+.mascot .note { fill: var(--break); font-size: 15px; font-weight: 700; animation: m-float 2s ease-in-out infinite; }
+.mascot .spark { fill: #ffcf5a; transform-box: fill-box; transform-origin: center; animation: m-twinkle 1.2s ease-in-out infinite; }
+.mascot .spark.s2 { animation-delay: .4s; }
+.mascot .spark.s3 { animation-delay: .8s; }
+.mascot.celebrate .m-body-g { animation: m-jump .9s cubic-bezier(.3,.7,.4,1) 2; }
+@keyframes m-sway { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+@keyframes m-breathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.03, .98); } }
+@keyframes m-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes m-hop { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes m-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
+@keyframes m-float { 0%, 100% { transform: translateY(0); opacity: .6; } 50% { transform: translateY(-4px); opacity: 1; } }
+@keyframes m-twinkle { 0%, 100% { transform: scale(.5); opacity: .4; } 50% { transform: scale(1.15); opacity: 1; } }
+@keyframes m-jump {
+  0% { transform: scale(1, 1); }
+  15% { transform: scale(1.12, .86); }
+  45% { transform: translateY(-22px) scale(.94, 1.08) rotate(-8deg); }
+  70% { transform: translateY(0) scale(1.1, .9) rotate(6deg); }
+  100% { transform: scale(1, 1); }
+}
+/* 結束時的彩帶 */
+.confetti-layer { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 90; }
+.confetti-layer i { position: absolute; left: var(--ox); top: var(--oy); width: var(--s); height: calc(var(--s) * 1.5); background: var(--c); border-radius: 2px; opacity: 0; animation: confetti 1.9s cubic-bezier(.2,.7,.4,1) var(--d) forwards; }
+.confetti-layer i.dot { height: var(--s); border-radius: 50%; }
+@keyframes confetti {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0) scale(.5); }
+  35% { opacity: 1; transform: translate(calc(var(--dx) * .75), var(--uy)) rotate(calc(var(--rot) * .4)) scale(1); }
+  100% { opacity: 0; transform: translate(var(--dx), var(--fy)) rotate(var(--rot)) scale(.9); }
+}
+@media (prefers-reduced-motion: reduce) { .mascot, .mascot * { animation: none !important; } .confetti-layer { display: none; } .draft { animation: none; } }
+@media (max-width: 400px) { .app { padding: 0 12px 56px; } .btn.lg { padding: 0 20px; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <h1>番茄鐘・讀書紀錄</h1>
+    <div class="hbtns">
+      <button id="themeBtn" class="icon-btn" type="button" aria-label="切換深淺色"></button>
+      <button id="settingsBtn" class="icon-btn" type="button" aria-label="開啟設定與備份">⚙</button>
+    </div>
+  </header>
+
+  <div id="storageWarn" class="warn-banner" role="alert" hidden>
+    <span style="flex:1;min-width:200px">⚠ 資料無法寫入瀏覽器儲存空間（可能是容量已滿或無痕模式），關閉頁面後資料會遺失。請立即匯出備份。</span>
+    <button id="warnExport" class="btn sm" type="button">立即匯出備份</button>
+  </div>
+
+  <div class="tabwrap">
+    <div class="tabs" role="tablist" aria-label="主要功能">
+      <button class="tab" role="tab" id="tab-timer" data-tab="timer" aria-controls="view-timer" aria-selected="true">計時器</button>
+      <button class="tab" role="tab" id="tab-subjects" data-tab="subjects" aria-controls="view-subjects" aria-selected="false">科目</button>
+      <button class="tab" role="tab" id="tab-records" data-tab="records" aria-controls="view-records" aria-selected="false">紀錄</button>
+      <button class="tab" role="tab" id="tab-stats" data-tab="stats" aria-controls="view-stats" aria-selected="false">統計</button>
+    </div>
+  </div>
+
+  <main>
+    <section id="view-timer" role="tabpanel" aria-labelledby="tab-timer"></section>
+
+    <section id="view-subjects" role="tabpanel" aria-labelledby="tab-subjects" hidden>
+      <button id="addSubjectBtn" class="btn primary" type="button" aria-label="新增科目" style="width:100%;margin-bottom:12px">＋ 新增科目</button>
+      <div id="subjectList"></div>
+    </section>
+
+    <section id="view-records" role="tabpanel" aria-labelledby="tab-records" hidden>
+      <div class="card">
+        <div class="filters">
+          <label class="field full"><span>科目</span><select id="recSubject" aria-label="依科目篩選"></select></label>
+          <label class="field"><span>起始日期</span><input id="recFrom" type="date" aria-label="起始日期"></label>
+          <label class="field"><span>結束日期</span><input id="recTo" type="date" aria-label="結束日期"></label>
+          <div class="full"><button id="recClear" class="btn sm" type="button">清除篩選</button></div>
+        </div>
+      </div>
+      <div id="recSummary" class="muted small" style="margin:0 2px 8px"></div>
+      <div id="recList"></div>
+    </section>
+
+    <section id="view-stats" role="tabpanel" aria-labelledby="tab-stats" hidden>
+      <div class="card">
+        <h2>今日摘要</h2>
+        <div id="statToday" class="stat-sum"></div>
+      </div>
+      <div class="card">
+        <div class="chart-head">
+          <h2 style="margin:0">各科目時間分配</h2>
+          <div class="seg" id="distSeg" role="group" aria-label="時間範圍">
+            <button type="button" data-r="today" aria-pressed="true">今日</button>
+            <button type="button" data-r="week" aria-pressed="false">本週</button>
+            <button type="button" data-r="month" aria-pressed="false">本月</button>
+            <button type="button" data-r="all" aria-pressed="false">全部</button>
+          </div>
+        </div>
+        <div id="statDist"></div>
+      </div>
+      <div class="card">
+        <div class="chart-head">
+          <h2 style="margin:0">讀書時間圖表</h2>
+          <div class="seg" id="chartSeg" role="group" aria-label="圖表週期">
+            <button type="button" data-m="week" aria-pressed="true">週</button>
+            <button type="button" data-m="month" aria-pressed="false">月</button>
+          </div>
+        </div>
+        <div class="chart-nav">
+          <button id="chartPrev" class="btn sm" type="button" aria-label="前一期">‹ 前一期</button>
+          <div id="chartLabel" class="lbl"></div>
+          <button id="chartNext" class="btn sm" type="button" aria-label="下一期">下一期 ›</button>
+        </div>
+        <div id="statChart"></div>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+<input type="file" id="importFile" accept="application/json,.json" hidden>
+
+<script>
+'use strict';
+/* ========== 基本工具 ========== */
+const KEY = 'pomodoro-study-v1';
+const SEEN_KEY = 'pomodoro-study-v1-seen';
+const $ = (sel, root = document) => root.querySelector(sel);
+const pad = n => String(n).padStart(2, '0');
+const isStr = v => typeof v === 'string';
+const isNum = v => typeof v === 'number' && isFinite(v);
+
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  if (attrs) for (const k in attrs) {
+    const v = attrs[k];
+    if (v == null || v === false) continue;
+    if (k === 'class') el.className = v;
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const kid of kids.flat(Infinity)) {
+    if (kid == null || kid === false) continue;
+    el.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+  }
+  return el;
+}
+const SVGNS = 'http://www.w3.org/2000/svg';
+function sv(tag, attrs, ...kids) {
+  const el = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  for (const kid of kids) if (kid != null) el.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+  return el;
+}
+const btn = (label, cls, onclick, extra) => h('button', Object.assign({ type: 'button', class: 'btn ' + (cls || ''), onclick }, extra), label);
+
+function uid() {
+  try { if (crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) {}
+  return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+}
+function dateKey(ts) { const d = new Date(ts); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+function timeStr(ts) { const d = new Date(ts); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+function fmtMin(m) {
+  m = Math.round(m);
+  if (m < 60) return m + ' 分鐘';
+  const hh = Math.floor(m / 60), mm = m % 60;
+  return mm ? `${hh} 小時 ${mm} 分` : `${hh} 小時`;
+}
+function fmtClock(ms) { const s = Math.max(0, Math.ceil(ms / 1000)); return pad(Math.floor(s / 60)) + ':' + pad(s % 60); }
+
+let toastTimer = null;
+function toast(msg, ms = 3200) {
+  const t = $('#toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+}
+
+/* ========== 資料驗證 / 讀寫 ========== */
+function bad(msg) { throw new Error(msg); }
+function defaultData() {
+  return { version: 1, settings: { focusMin: 25, breakMin: 5, theme: 'system' }, subjects: [], records: [], timer: null };
+}
+function validateData(o) {
+  if (!o || typeof o !== 'object' || Array.isArray(o)) bad('檔案內容不是有效的備份資料');
+  if (o.version !== 1) bad('不支援的資料版本');
+  const s = o.settings;
+  if (!s || typeof s !== 'object') bad('缺少設定資料');
+  if (!Number.isInteger(s.focusMin) || s.focusMin < 1 || s.focusMin > 180) bad('專注時間設定不正確');
+  if (!Number.isInteger(s.breakMin) || s.breakMin < 1 || s.breakMin > 60) bad('休息時間設定不正確');
+  if (!['system', 'light', 'dark'].includes(s.theme)) bad('外觀設定不正確');
+  if (!Array.isArray(o.subjects)) bad('科目資料格式錯誤');
+  if (!Array.isArray(o.records)) bad('紀錄資料格式錯誤');
+  const subjects = o.subjects.map((x, i) => {
+    if (!x || typeof x !== 'object' || !isStr(x.id) || !isStr(x.name) || !isNum(x.createdAt) || !Array.isArray(x.chapters)) bad(`第 ${i + 1} 個科目格式錯誤`);
+    const chapters = x.chapters.map((c, j) => {
+      if (!c || typeof c !== 'object' || !isStr(c.id) || !isStr(c.name) || typeof c.done !== 'boolean') bad(`科目「${x.name}」的第 ${j + 1} 個章節格式錯誤`);
+      return { id: c.id, name: c.name, done: c.done };
+    });
+    return { id: x.id, name: x.name, createdAt: x.createdAt, chapters };
+  });
+  const records = o.records.map((r, i) => {
+    if (!r || typeof r !== 'object' || !isStr(r.id) || !isNum(r.startedAt) || !isNum(r.durationMin) || r.durationMin < 0 ||
+        typeof r.completed !== 'boolean' || !isStr(r.subjectId) || !isStr(r.subjectName)) bad(`第 ${i + 1} 筆紀錄格式錯誤`);
+    const chapterId = r.chapterId === undefined ? null : r.chapterId;
+    if (!(chapterId === null || isStr(chapterId))) bad(`第 ${i + 1} 筆紀錄的章節欄位錯誤`);
+    const contentText = r.contentText == null ? '' : r.contentText;
+    const note = r.note == null ? '' : r.note;
+    if (!isStr(contentText) || !isStr(note)) bad(`第 ${i + 1} 筆紀錄的文字欄位錯誤`);
+    const fs = r.focusScore === undefined ? null : r.focusScore;
+    if (!(fs === null || (Number.isInteger(fs) && fs >= 1 && fs <= 5))) bad(`第 ${i + 1} 筆紀錄的專注度錯誤`);
+    return { id: r.id, startedAt: r.startedAt, durationMin: r.durationMin, completed: r.completed, subjectId: r.subjectId,
+      subjectName: r.subjectName, chapterId, contentText, focusScore: fs, note: note.slice(0, 200) };
+  });
+  return { version: 1, settings: { focusMin: s.focusMin, breakMin: s.breakMin, theme: s.theme }, subjects, records, timer: null };
+}
+function sanitizeTimer(t) {
+  if (!t || typeof t !== 'object') return null;
+  if (!['focus', 'focusPaused', 'break', 'pending'].includes(t.state)) return null;
+  if (![t.remainingMs, t.plannedMin, t.startedAt].every(isNum)) return null;
+  if ((t.state === 'focus' || t.state === 'break') && !isNum(t.endAt)) return null;
+  if (t.state !== 'break' && !isStr(t.subjectId)) return null;
+  return {
+    state: t.state, endAt: isNum(t.endAt) ? t.endAt : 0, remainingMs: t.remainingMs, plannedMin: t.plannedMin, startedAt: t.startedAt,
+    subjectId: isStr(t.subjectId) ? t.subjectId : null, subjectName: isStr(t.subjectName) ? t.subjectName : '',
+    chapterId: isStr(t.chapterId) ? t.chapterId : null, contentText: isStr(t.contentText) ? t.contentText : ''
+  };
+}
+
+let data = defaultData();
+let lastRaw = null;
+let storageOk = true;
+let corruptNotice = false;
+
+function loadData() {
+  let raw = null;
+  try { raw = localStorage.getItem(KEY); } catch (e) { storageOk = false; }
+  if (!raw) return defaultData();
+  try {
+    const o = JSON.parse(raw);
+    const d = validateData(o);
+    d.timer = sanitizeTimer(o.timer);
+    lastRaw = raw;
+    return d;
+  } catch (e) {
+    try { localStorage.setItem(KEY + '-corrupt-backup', raw); } catch (_) {}
+    corruptNotice = true;
+    return defaultData();
+  }
+}
+function setStorageOk(ok) { storageOk = ok; $('#storageWarn').hidden = ok; }
+function save() {
+  try {
+    const raw = JSON.stringify(data);
+    localStorage.setItem(KEY, raw);
+    lastRaw = raw;
+    setStorageOk(true);
+  } catch (e) { setStorageOk(false); }
+}
+
+/* ========== UI 狀態 ========== */
+const ui = {
+  tab: 'timer',
+  sel: { subjectId: '', chapterVal: '', free: '' },
+  collapsed: new Set(),
+  rec: { subject: '', from: '', to: '', limit: 100 },
+  distRange: 'today', chartMode: 'week', chartOffset: 0,
+  clock: null, refocus: null,
+  draftSubject: false, draftText: '', celebrateUntil: 0, taskCollapsed: new Set()
+};
+const getSubject = id => data.subjects.find(x => x.id === id) || null;
+function subjName(r) { const sj = getSubject(r.subjectId); return sj ? sj.name : r.subjectName + '（已刪除）'; }
+
+/* ========== 主題 ========== */
+const mq = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
+function effectiveTheme() {
+  const t = data.settings.theme;
+  if (t === 'light' || t === 'dark') return t;
+  return mq && mq.matches ? 'dark' : 'light';
+}
+function applyTheme() {
+  const eff = effectiveTheme();
+  document.documentElement.setAttribute('data-theme', eff);
+  const b = $('#themeBtn');
+  b.textContent = eff === 'dark' ? '☀' : '🌙';
+  b.setAttribute('aria-label', eff === 'dark' ? '切換為淺色模式' : '切換為深色模式');
+}
+if (mq && mq.addEventListener) mq.addEventListener('change', () => { if (data.settings.theme === 'system') applyTheme(); });
+
+/* ========== Modal ========== */
+const modalStack = [];
+function openModal({ title, content, actions = [], dismissible = true, onDismiss }) {
+  const prevFocus = document.activeElement;
+  const tid = 'mt' + Math.random().toString(36).slice(2);
+  const m = {};
+  const actionsEl = actions.length ? h('div', { class: 'actions' }, actions.map(a =>
+    h('button', { type: 'button', class: 'btn ' + (a.cls || ''), onclick: () => { if (a.closes !== false) m.close(); if (a.onClick) a.onClick(); } }, a.label))) : null;
+  const box = h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': tid, tabindex: '-1' },
+    h('h2', { id: tid }, title), content, actionsEl);
+  const overlay = h('div', { class: 'overlay' }, box);
+  m.el = overlay;
+  m.close = () => {
+    const i = modalStack.indexOf(m);
+    if (i < 0) return;
+    modalStack.splice(i, 1);
+    overlay.remove();
+    if (!modalStack.length) document.body.style.overflow = '';
+    if (prevFocus && document.contains(prevFocus) && prevFocus.focus) { try { prevFocus.focus(); } catch (e) {} }
+  };
+  m.dismiss = () => { if (!dismissible) return; m.close(); if (onDismiss) onDismiss(); };
+  m.dismissible = dismissible;
+  modalStack.push(m);
+  document.body.style.overflow = 'hidden';
+  document.body.append(overlay);
+  const first = box.querySelector('input:not([type=hidden]), textarea, select, button');
+  (first || box).focus();
+  return m;
+}
+document.addEventListener('keydown', e => {
+  const top = modalStack[modalStack.length - 1];
+  if (!top) return;
+  if (e.key === 'Escape') { top.dismiss(); return; }
+  if (e.key === 'Tab') {
+    const f = [...top.el.querySelectorAll('button, input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter(x => !x.disabled && x.offsetParent !== null);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && (document.activeElement === first || !top.el.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+});
+function confirmDialog({ title, message, okLabel = '確定', danger = false }, onOk) {
+  openModal({
+    title, content: h('p', { style: 'margin:0;white-space:pre-line' }, message),
+    actions: [{ label: '取消' }, { label: okLabel, cls: danger ? 'danger' : 'primary', onClick: onOk }]
+  });
+}
+function promptDialog({ title, label, value = '', maxlength = 40, okLabel = '儲存' }, onOk) {
+  const input = h('input', { type: 'text', maxlength, 'aria-label': label });
+  input.value = value; imeGuard(input);
+  const err = h('p', { class: 'err', role: 'alert' });
+  let m;
+  const go = () => {
+    const msg = onOk(input.value);
+    if (msg) { err.textContent = msg; input.focus(); } else m.close();
+  };
+  const form = h('div', null,
+    h('label', { class: 'field' }, h('span', null, label), input), err,
+    h('div', { class: 'actions' }, btn('取消', '', () => m.dismiss()), h('button', { class: 'btn primary', type: 'button', onclick: go }, okLabel)));
+  enterToSubmit(form, go);
+  m = openModal({ title, content: form });
+  input.select();
+}
+
+/* ========== 音效 ========== */
+let audioCtx = null;
+function ensureAudio() {
+  try {
+    if (!audioCtx) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) audioCtx = new AC(); }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (e) {}
+}
+function flashScreen() {
+  document.body.classList.add('flash');
+  setTimeout(() => document.body.classList.remove('flash'), 1600);
+}
+function playBeep() {
+  let ok = false;
+  try {
+    ensureAudio();
+    if (audioCtx && audioCtx.state !== 'closed') {
+      const t0 = audioCtx.currentTime;
+      [0, 0.28, 0.56].forEach((d, i) => {
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = 'sine'; o.frequency.value = i === 2 ? 1175 : 880;
+        g.gain.setValueAtTime(0.0001, t0 + d);
+        g.gain.exponentialRampToValueAtTime(0.35, t0 + d + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.22);
+        o.connect(g); g.connect(audioCtx.destination);
+        o.start(t0 + d); o.stop(t0 + d + 0.25);
+      });
+      ok = audioCtx.state === 'running';
+    }
+  } catch (e) {}
+  if (!ok) flashScreen();
+}
+['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, ensureAudio, { once: true }));
+
+/* ========== 計時器邏輯 ========== */
+function elapsedMs(t) {
+  const rem = t.state === 'focus' ? t.endAt - Date.now() : t.remainingMs;
+  return Math.min(t.plannedMin * 60000, Math.max(0, t.plannedMin * 60000 - rem));
+}
+function startFocus() {
+  if (data.timer && data.timer.state !== 'break') return;
+  const subj = getSubject(ui.sel.subjectId);
+  if (!subj) { toast('請先選擇科目'); return; }
+  let chapterId = null, contentText = '';
+  if (ui.sel.chapterVal === '__free__') contentText = ui.sel.free.trim().slice(0, 100);
+  else if (ui.sel.chapterVal) {
+    const c = subj.chapters.find(x => x.id === ui.sel.chapterVal);
+    if (c) { chapterId = c.id; contentText = c.name; }
+  }
+  const ms = data.settings.focusMin * 60000, now = Date.now();
+  data.timer = { state: 'focus', endAt: now + ms, remainingMs: ms, plannedMin: data.settings.focusMin, startedAt: now,
+    subjectId: subj.id, subjectName: subj.name, chapterId, contentText };
+  ensureAudio(); save(); renderTimer(); updateClock();
+}
+function pauseFocus() {
+  const t = data.timer; if (!t || t.state !== 'focus') return;
+  t.remainingMs = Math.max(0, t.endAt - Date.now()); t.state = 'focusPaused';
+  save(); renderTimer(); updateClock();
+}
+function resumeFocus() {
+  const t = data.timer; if (!t || t.state !== 'focusPaused') return;
+  t.endAt = Date.now() + t.remainingMs; t.state = 'focus';
+  ensureAudio(); save(); renderTimer(); updateClock();
+}
+function skipBreak() {
+  if (data.timer && data.timer.state === 'break') { data.timer = null; save(); renderTimer(); updateClock(); }
+}
+function abandonFocus() {
+  const t = data.timer;
+  if (!t || (t.state !== 'focus' && t.state !== 'focusPaused')) return;
+  const wasRunning = t.state === 'focus';
+  if (wasRunning) pauseFocus();
+  const mins = Math.floor(elapsedMs(data.timer) / 60000);
+  const back = () => { if (wasRunning && data.timer && data.timer.state === 'focusPaused') resumeFocus(); };
+  const actions = [];
+  if (mins >= 1) actions.push({ label: '記錄已專注時間', cls: 'primary', onClick: () => openRecordForm('abandon', { durationMin: mins, onCancel: back }) });
+  actions.push({ label: '作廢', cls: 'danger', onClick: () => { data.timer = null; save(); renderAll(); updateClock(); toast('已作廢，未留下紀錄'); } });
+  actions.push({ label: '取消', onClick: back });
+  openModal({
+    title: '放棄這個番茄鐘？',
+    content: h('p', { style: 'margin:0' }, mins >= 1
+      ? `目前已專注 ${mins} 分鐘。要把這段時間記錄成「未完成」的紀錄，還是直接作廢？`
+      : '已專注不足 1 分鐘，無法留下紀錄，只能作廢。'),
+    actions, onDismiss: back
+  });
+}
+let pendingModal = null;
+function onTimerEnd() {
+  const t = data.timer;
+  if (!t) return;
+  if (t.state === 'focus') {
+    t.state = 'pending'; t.remainingMs = 0;
+    save(); playBeep(); renderTimer(); updateClock();
+    celebrate('focus');
+    /* 讓使用者先看完結束動畫，再跳出結束後表單 */
+    const delay = (ui.tab === 'timer' && !document.hidden && !reduceMotion()) ? 1800 : 0;
+    if (delay) setTimeout(() => openRecordForm('complete'), delay); else openRecordForm('complete');
+  } else if (t.state === 'break') {
+    data.timer = null; save(); playBeep(); renderTimer(); updateClock();
+    celebrate('break');
+    toast('休息結束，準備好就開始下一個專注吧');
+  }
+}
+function tick() {
+  const t = data.timer;
+  if (t && (t.state === 'focus' || t.state === 'break') && t.endAt - Date.now() <= 0) onTimerEnd();
+  else updateClock();
+}
+
+function openRecordForm(mode, opts = {}) {
+  const t = data.timer;
+  if (!t || (mode === 'complete' && t.state !== 'pending')) return;
+  if (mode === 'complete' && pendingModal) return;
+  const isComplete = mode === 'complete';
+  const durationMin = isComplete ? t.plannedMin : opts.durationMin;
+  const subj = getSubject(t.subjectId);
+  const chap = subj && t.chapterId ? subj.chapters.find(c => c.id === t.chapterId) : null;
+  const err = h('p', { class: 'err', role: 'alert' });
+  const scoreLabels = ['分心', '', '', '', '專注'];
+  const scores = h('div', { class: 'scores', role: 'radiogroup', 'aria-label': '專注程度 1 到 5 分' },
+    [1, 2, 3, 4, 5].map(n => h('label', { class: 'score' },
+      h('input', { type: 'radio', name: 'score', value: String(n), 'aria-label': `${n} 分` }), h('span', null, String(n)))));
+  const note = h('textarea', { maxlength: '200', rows: '3', placeholder: '今天讀到什麼？哪裡卡住？（選填）', 'aria-label': '一句話心得' });
+  const counter = h('div', { class: 'k', style: 'text-align:right' }, '0 / 200');
+  note.addEventListener('input', () => { counter.textContent = note.value.length + ' / 200'; });
+  const doneBox = (isComplete && chap && !chap.done) ? h('input', { type: 'checkbox', id: 'markDone' }) : null;
+  let m;
+  const submit = e => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (isComplete) {
+      syncFromStorage();
+      if (!data.timer || data.timer.state !== 'pending') { m.close(); pendingModal = null; renderAll(); updateClock(); return; }
+    }
+    const checked = form.querySelector('input[name=score]:checked');
+    if (isComplete && !checked) { err.textContent = '請選擇專注程度（1〜5）才能儲存'; return; }
+    const tt = data.timer;
+    data.records.push({
+      id: uid(), startedAt: tt.startedAt, durationMin, completed: isComplete, subjectId: tt.subjectId, subjectName: tt.subjectName,
+      chapterId: tt.chapterId, contentText: tt.contentText, focusScore: checked ? Number(checked.value) : null, note: note.value.trim().slice(0, 200)
+    });
+    if (isComplete) {
+      if (doneBox && doneBox.checked) {
+        const sj = getSubject(tt.subjectId), c = sj && sj.chapters.find(x => x.id === tt.chapterId);
+        if (c) c.done = true;
+      }
+      const ms = data.settings.breakMin * 60000, now = Date.now();
+      data.timer = { state: 'break', endAt: now + ms, remainingMs: ms, plannedMin: data.settings.breakMin, startedAt: now,
+        subjectId: null, subjectName: '', chapterId: null, contentText: '' };
+    } else data.timer = null;
+    save(); m.close(); pendingModal = null; renderAll(); updateClock();
+    toast(isComplete ? '已儲存紀錄，開始休息' : '已儲存為未完成紀錄');
+  };
+  const form = h('div', null,
+    h('p', { style: 'margin:0 0 4px' }, h('strong', null, t.subjectName), t.contentText ? '・' + t.contentText : ''),
+    h('p', { class: 'muted small', style: 'margin:0' }, isComplete ? `完成 ${durationMin} 分鐘的專注 🎉` : `已專注 ${durationMin} 分鐘（未完成）`),
+    h('fieldset', null, h('legend', null, isComplete ? '專注程度（必填）' : '專注程度（選填）'), scores,
+      h('div', { class: 'score-legend' }, h('span', null, '1 分心'), h('span', null, '5 非常專注'))),
+    h('label', { class: 'field', style: 'margin-top:12px' }, h('span', null, '一句話心得（選填，200 字內）'), note), counter,
+    doneBox ? h('label', { class: 'check' }, doneBox, h('span', null, `「${chap.name}」這個章節已讀完`)) : null,
+    err,
+    h('div', { class: 'actions' },
+      !isComplete ? btn('取消', '', () => m.dismiss()) : null,
+      h('button', { class: 'btn primary', type: 'button', onclick: submit }, '儲存')));
+  m = openModal({
+    title: isComplete ? '時間到！記錄這次專注' : '記錄未完成的專注', content: form, dismissible: !isComplete,
+    onDismiss: () => { if (opts.onCancel) opts.onCancel(); }
+  });
+  if (isComplete) pendingModal = m;
+}
+
+/* ========== 番茄角色與結束動畫 ========== */
+const reduceMotion = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+const MASCOT_SVG = `
+<ellipse class="m-shadow" cx="50" cy="96" rx="26" ry="3.5"/>
+<g class="m-body-g">
+  <ellipse class="m-fruit" cx="50" cy="60" rx="39" ry="34"/>
+  <ellipse class="m-shine" cx="31" cy="44" rx="7" ry="4" transform="rotate(-30 31 44)"/>
+  <path class="m-leaf" d="M50 30 C41 31 31 28 26 20 C37 16 47 21 50 30 Z"/>
+  <path class="m-leaf" d="M50 30 C59 31 69 28 74 20 C63 16 53 21 50 30 Z"/>
+  <path class="m-leaf" d="M50 30 C46 22 47 13 51 8 C54 13 54 22 50 30 Z"/>
+  <g class="eyes-open"><circle class="m-eye" cx="36" cy="58" r="5.2"/><circle class="m-eye" cx="64" cy="58" r="5.2"/><circle class="m-glint" cx="37.8" cy="56" r="1.7"/><circle class="m-glint" cx="65.8" cy="56" r="1.7"/></g>
+  <g class="eyes-happy m-line"><path d="M30 60 Q36 52 42 60"/><path d="M58 60 Q64 52 70 60"/></g>
+  <g class="eyes-sleep m-line"><path d="M30 57 Q36 63 42 57"/><path d="M58 57 Q64 63 70 57"/></g>
+  <circle class="m-cheek" cx="25" cy="68" r="5.5"/><circle class="m-cheek" cx="75" cy="68" r="5.5"/>
+  <path class="mouth-smile m-line" d="M43 68 Q50 76 57 68"/>
+  <path class="mouth-open" d="M42 67 Q50 83 58 67 Z"/>
+</g>
+<text class="zzz" x="76" y="30">z</text><text class="zzz z2" x="85" y="19">z</text>
+<text class="note" x="78" y="30">♪</text>
+<path class="spark s1" d="M12 30 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z"/>
+<path class="spark s2" d="M86 38 l1.6 4 4 1.6 -4 1.6 -1.6 4 -1.6 -4 -4 -1.6 4 -1.6z"/>
+<path class="spark s3" d="M78 10 l1.4 3.4 3.4 1.4 -3.4 1.4 -1.4 3.4 -1.4 -3.4 -3.4 -1.4 3.4 -1.4z"/>`;
+function makeMascot(st) {
+  const key = { idle: 'idle', focus: 'focus', focusPaused: 'paused', break: 'break', pending: 'done' }[st] || 'idle';
+  const svg = sv('svg', { class: 'mascot m-' + key + (Date.now() < ui.celebrateUntil ? ' celebrate' : ''), viewBox: '0 0 100 100', 'aria-hidden': 'true', focusable: 'false' });
+  svg.innerHTML = MASCOT_SVG; /* 靜態內容，不含使用者輸入 */
+  return svg;
+}
+function confetti(count) {
+  if (reduceMotion()) return;
+  const clock = $('#view-timer .clock');
+  let ox = innerWidth / 2, oy = innerHeight * 0.3;
+  if (ui.tab === 'timer' && clock && clock.isConnected) { const r = clock.getBoundingClientRect(); ox = r.left + r.width / 2; oy = r.top + r.height / 2; }
+  const colors = ['#e5533d', '#ffcf5a', '#62c18b', '#6ec1ff', '#ff9fb0', '#b28cff'];
+  const spread = Math.min(innerWidth * 0.45, 260), rnd = (a, b) => a + Math.random() * (b - a);
+  const layer = h('div', { class: 'confetti-layer', 'aria-hidden': 'true' });
+  for (let i = 0; i < count; i++) {
+    const piece = h('i', { class: Math.random() < 0.3 ? 'dot' : '' });
+    piece.setAttribute('style',
+      `--ox:${ox.toFixed(0)}px;--oy:${oy.toFixed(0)}px;--dx:${rnd(-spread, spread).toFixed(0)}px;--uy:${(-rnd(60, 200)).toFixed(0)}px;` +
+      `--fy:${rnd(60, innerHeight * 0.5).toFixed(0)}px;--rot:${rnd(-540, 540).toFixed(0)}deg;--s:${rnd(6, 11).toFixed(1)}px;` +
+      `--c:${colors[i % colors.length]};--d:${rnd(0, 0.15).toFixed(2)}s`);
+    layer.append(piece);
+  }
+  document.body.append(layer);
+  setTimeout(() => layer.remove(), 2600);
+}
+function celebrate(kind) {
+  ui.celebrateUntil = Date.now() + 1900;
+  const m = $('#view-timer .mascot');
+  if (m) { m.classList.remove('celebrate'); void m.getBoundingClientRect(); m.classList.add('celebrate'); }
+  confetti(kind === 'focus' ? 48 : 18);
+}
+
+/* ========== 計時器畫面 ========== */
+function updateClock() {
+  const c = ui.clock, t = data.timer;
+  let rem, total, label, title;
+  if (!t) { total = data.settings.focusMin * 60000; rem = total; label = '待命'; title = '番茄鐘'; }
+  else if (t.state === 'focus') { rem = t.endAt - Date.now(); total = t.plannedMin * 60000; label = '專注中'; }
+  else if (t.state === 'focusPaused') { rem = t.remainingMs; total = t.plannedMin * 60000; label = '專注暫停'; }
+  else if (t.state === 'break') { rem = t.endAt - Date.now(); total = t.plannedMin * 60000; label = '休息中'; }
+  else { rem = 0; total = t.plannedMin * 60000; label = '時間到'; }
+  rem = Math.max(0, rem);
+  const clk = fmtClock(rem);
+  if (t) title = t.state === 'pending' ? '時間到｜番茄鐘' : `${clk} ${label}｜番茄鐘`;
+  if (document.title !== title) document.title = title;
+  if (c && c.time.isConnected) {
+    c.time.textContent = clk; c.chip.textContent = label;
+    c.ring.setAttribute('stroke-dashoffset', String(c.circ * (1 - (total ? rem / total : 0))));
+  }
+}
+
+function renderTimer() {
+  const root = $('#view-timer');
+  root.replaceChildren();
+  const t = data.timer;
+  const st = t ? t.state : 'idle';
+  const locked = !!t && t.state !== 'break';
+  const circ = 2 * Math.PI * 118;
+  const ring = sv('circle', { class: 'ring-fg', cx: 130, cy: 130, r: 118, 'stroke-dasharray': String(circ), 'stroke-dashoffset': '0' });
+  const svg = sv('svg', { viewBox: '0 0 260 260', 'aria-hidden': 'true' }, sv('circle', { class: 'ring-bg', cx: 130, cy: 130, r: 118 }), ring);
+  const time = h('div', { class: 'time', role: 'timer', 'aria-label': '剩餘時間' });
+  const chip = h('span', { class: 'chip' });
+  ui.clock = { time, ring, chip, circ };
+
+  /* 控制按鈕 */
+  const controls = h('div', { class: 'controls' });
+  let startBtn = null;
+  if (st === 'idle' || st === 'break') {
+    if (st === 'idle') { startBtn = btn('開始專注', 'primary lg', startFocus, { 'aria-label': '開始專注' }); controls.append(startBtn); }
+    else controls.append(btn('略過休息', 'green lg', skipBreak, { 'aria-label': '略過休息' }));
+  } else if (st === 'focus') {
+    controls.append(btn('暫停', 'lg', pauseFocus, { 'aria-label': '暫停專注' }), btn('放棄', 'danger lg', abandonFocus, { 'aria-label': '放棄這次專注' }));
+  } else if (st === 'focusPaused') {
+    controls.append(btn('繼續', 'primary lg', resumeFocus, { 'aria-label': '繼續專注' }), btn('放棄', 'danger lg', abandonFocus, { 'aria-label': '放棄這次專注' }));
+  } else if (st === 'pending') {
+    controls.append(btn('填寫專注結果', 'primary lg', () => openRecordForm('complete'), { 'aria-label': '填寫專注結果並儲存' }));
+  }
+
+  /* 科目與內容 */
+  let selCard;
+  if (locked) {
+    selCard = h('div', { class: 'card' },
+      h('div', { class: 'k' }, '本次專注'), h('div', { class: 'big' }, t.subjectName),
+      h('div', { class: 'muted' }, t.contentText || '（未指定內容）'),
+      st !== 'pending' ? h('p', { class: 'hint' }, '專注期間無法切換科目；要更換請先完成或放棄。') : null);
+  } else if (!data.subjects.length) {
+    selCard = h('div', { class: 'card' }, h('p', { style: 'margin:0 0 10px' }, '還沒有科目。請先建立科目與章節，才能開始專注。'),
+      btn('前往建立科目', 'primary', () => { ui.draftSubject = true; refocusAfter('newsubj'); switchTab('subjects'); }));
+  } else {
+    if (!getSubject(ui.sel.subjectId)) { ui.sel.subjectId = ''; ui.sel.chapterVal = ''; ui.sel.free = ''; }
+    const cur = getSubject(ui.sel.subjectId);
+    if (cur && ui.sel.chapterVal && ui.sel.chapterVal !== '__free__' && !cur.chapters.some(c => c.id === ui.sel.chapterVal)) ui.sel.chapterVal = '';
+    const summary = h('div', { class: 'task-now', role: 'status', 'aria-live': 'polite' });
+    const hint = h('p', { class: 'hint' }, '請在清單中點選一項任務，才能開始專注。');
+    const freeBoxes = [];
+    const refresh = () => {
+      const sj = getSubject(ui.sel.subjectId), cv = ui.sel.chapterVal;
+      if (sj) {
+        let what = '整科（未指定章節）';
+        if (cv === '__free__') what = ui.sel.free.trim() || '（自由輸入，可留空）';
+        else if (cv) { const c = sj.chapters.find(x => x.id === cv); if (c) what = c.name; }
+        summary.replaceChildren(h('div', { class: 'k' }, '現在要做'), h('div', { class: 'big' }, sj.name), h('div', { class: 'muted' }, what));
+      } else summary.replaceChildren(h('div', { class: 'k' }, '現在要做'), h('div', { class: 'muted' }, '尚未選擇任務'));
+      freeBoxes.forEach(f => { f.wrap.hidden = !(ui.sel.subjectId === f.id && cv === '__free__'); });
+      if (startBtn) startBtn.disabled = !sj;
+      hint.hidden = !!sj || st !== 'idle';
+    };
+    const groups = data.subjects.map(sj => {
+      const total = sj.chapters.length, done = sj.chapters.filter(c => c.done).length;
+      const open = !ui.taskCollapsed.has(sj.id);
+      const body = h('div', { class: 'task-body' });
+      body.hidden = !open;
+      const mkRow = (cval, label, isDone) => {
+        const r = h('input', { type: 'radio', name: 'task', value: sj.id + '|' + cval });
+        r.checked = ui.sel.subjectId === sj.id && ui.sel.chapterVal === cval;
+        r.addEventListener('change', () => {
+          ui.sel.subjectId = sj.id; ui.sel.chapterVal = cval; if (cval !== '__free__') ui.sel.free = '';
+          refresh();
+          if (cval === '__free__') { const f = freeBoxes.find(x => x.id === sj.id); if (f) f.input.focus(); }
+        });
+        return h('label', { class: 'task' + (isDone ? ' done' : '') }, r, h('span', { class: 'tmark', 'aria-hidden': 'true' }), h('span', { class: 'tname' }, (isDone ? '✓ ' : '') + label));
+      };
+      body.append(mkRow('', total ? '整科（不指定章節）' : '整科（尚未建立章節）'));
+      sj.chapters.forEach(c => body.append(mkRow(c.id, c.name, c.done)));
+      body.append(mkRow('__free__', '其他內容…'));
+      const fin = h('input', { type: 'text', maxlength: '100', placeholder: '輸入清單外的內容（選填）', 'aria-label': `「${sj.name}」的自由輸入內容`,
+        oninput: e => { ui.sel.free = e.target.value; refresh(); } });
+      fin.value = ui.sel.subjectId === sj.id ? ui.sel.free : '';
+      const wrap = h('div', { class: 'task-free' }, fin);
+      wrap.hidden = true;
+      freeBoxes.push({ id: sj.id, wrap, input: fin });
+      body.append(wrap);
+      const head = h('button', { type: 'button', class: 'task-head', 'aria-expanded': String(open), 'aria-label': `${open ? '收合' : '展開'}「${sj.name}」的任務` },
+        h('span', null, sj.name), h('span', { class: 'cnt' }, total ? `${done} / ${total} 章` : '無章節'), h('span', { 'aria-hidden': 'true' }, open ? '▾' : '▸'));
+      head.addEventListener('click', () => {
+        const nowOpen = body.hidden; body.hidden = !nowOpen;
+        if (nowOpen) ui.taskCollapsed.delete(sj.id); else ui.taskCollapsed.add(sj.id);
+        head.setAttribute('aria-expanded', String(nowOpen));
+        head.setAttribute('aria-label', `${nowOpen ? '收合' : '展開'}「${sj.name}」的任務`);
+        head.lastChild.textContent = nowOpen ? '▾' : '▸';
+      });
+      return h('div', { class: 'task-group' }, head, body);
+    });
+    refresh();
+    selCard = h('div', { class: 'card' }, h('h2', null, '選擇現在要做的任務'), summary,
+      h('div', { class: 'tasklist', role: 'radiogroup', 'aria-label': '選擇現在要執行的任務' }, groups), hint);
+  }
+
+  /* 時間設定 */
+  const mkDur = (label, key, min, max) => {
+    const inp = h('input', { type: 'number', inputmode: 'numeric', min: String(min), max: String(max), step: '1', 'aria-label': `${label}（分鐘）` });
+    inp.value = data.settings[key];
+    inp.addEventListener('change', () => {
+      const v = Number(inp.value);
+      if (inp.value === '' || !Number.isInteger(v) || v < min || v > max) {
+        toast(`${label}須為 ${min}〜${max} 之間的整數分鐘`); inp.value = data.settings[key]; return;
+      }
+      data.settings[key] = v; save();
+      if (data.timer) toast('新的時間設定將從下一次計時開始套用'); else updateClock();
+    });
+    return h('label', { class: 'field' }, h('span', null, `${label}（分鐘，${min}〜${max}）`), inp);
+  };
+  const durCard = h('div', { class: 'card' }, h('div', { class: 'grid2' }, mkDur('專注時間', 'focusMin', 1, 180), mkDur('休息時間', 'breakMin', 1, 60)));
+
+  root.append(h('div', { class: 'timer-top' }, chip),
+    h('div', { class: 'clock' + (st === 'break' ? ' is-break' : '') }, svg, h('div', { class: 'time-wrap' }, makeMascot(st), time)),
+    controls, selCard, durCard);
+  updateClock();
+}
+
+/* ========== 科目 / 章節 ========== */
+function nameError(name, list, selfId) {
+  if (!name) return '名稱不可為空白';
+  if (list.some(x => x.id !== selfId && x.name.toLowerCase() === name.toLowerCase())) return '名稱已存在，請換一個';
+  return '';
+}
+function refocusAfter(key) { ui.refocus = key; }
+/* 注音／拼音選字時按 Enter 只是確認選字，不應送出表單 */
+function imeGuard(el) { el.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.isComposing || e.keyCode === 229)) e.preventDefault(); }); }
+/* 部分預覽環境（沙盒 iframe）會封鎖表單送出，submit 事件根本不會觸發，
+   所以不依賴 <form> 送出：按鈕用 click、文字欄用 Enter 鍵來觸發。 */
+function enterToSubmit(root, fn) {
+  root.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;
+    const t = e.target;
+    if (t && t.tagName === 'INPUT' && (t.type === 'text' || t.type === 'number')) { e.preventDefault(); fn(); }
+  });
+}
+function pickTask(sj, c) {
+  if (data.timer && data.timer.state !== 'break') { toast('專注進行中，結束後再選下一個任務'); return; }
+  ui.sel.subjectId = sj.id; ui.sel.chapterVal = c.id; ui.sel.free = '';
+  switchTab('timer'); toast(`已選擇「${sj.name}・${c.name}」，按「開始專注」即可`);
+}
+function doRefocus() {
+  if (!ui.refocus) return;
+  const el = document.querySelector('[data-key="' + ui.refocus.replace(/"/g, '\\"') + '"]');
+  ui.refocus = null;
+  if (el) {
+    el.focus();
+    if (el.dataset.key === 'newsubj' && el.scrollIntoView) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+}
+function addSubject(raw) {
+  const name = raw.trim();
+  const e = nameError(name, data.subjects);
+  if (e) { toast(e); return false; }
+  const sj = { id: uid(), name, createdAt: Date.now(), chapters: [] };
+  data.subjects.push(sj);
+  if (ui.draftSubject) { ui.draftText = ''; refocusAfter('newsubj'); toast(`已新增「${name}」，可繼續輸入下一個科目`); }
+  save(); renderAll();
+  return true;
+}
+function renameSubject(sj) {
+  promptDialog({ title: '重新命名科目', label: '科目名稱', value: sj.name }, v => {
+    const name = v.trim(); const e = nameError(name, data.subjects, sj.id);
+    if (e) return e;
+    sj.name = name; save(); renderAll(); return '';
+  });
+}
+function deleteSubject(sj) {
+  if (data.timer && data.timer.state !== 'break' && data.timer.subjectId === sj.id) { toast('這個科目正在專注中，無法刪除'); return; }
+  confirmDialog({
+    title: `刪除科目「${sj.name}」？`,
+    message: '科目與底下所有章節會被刪除，無法復原。\n該科目的歷史讀書紀錄仍會保留，並標示為「已刪除」。',
+    okLabel: '刪除', danger: true
+  }, () => {
+    data.subjects = data.subjects.filter(x => x.id !== sj.id);
+    if (ui.sel.subjectId === sj.id) { ui.sel.subjectId = ''; ui.sel.chapterVal = ''; }
+    save(); renderAll(); toast('已刪除科目');
+  });
+}
+function addChapter(sj, raw) {
+  const name = raw.trim();
+  const e = nameError(name, sj.chapters);
+  if (e) return e;
+  sj.chapters.push({ id: uid(), name, done: false });
+  save(); refocusAfter('addch-' + sj.id); renderAll(); toast(`已新增章節「${name}」`);
+  return '';
+}
+function renameChapter(sj, c) {
+  promptDialog({ title: '重新命名章節', label: '章節名稱', value: c.name, maxlength: 60 }, v => {
+    const name = v.trim(); const e = nameError(name, sj.chapters, c.id);
+    if (e) return e;
+    c.name = name; save(); renderAll(); return '';
+  });
+}
+function deleteChapter(sj, c) {
+  confirmDialog({ title: `刪除章節「${c.name}」？`, message: '歷史讀書紀錄中的內容文字仍會保留。', okLabel: '刪除', danger: true }, () => {
+    sj.chapters = sj.chapters.filter(x => x.id !== c.id);
+    save(); renderAll();
+  });
+}
+function openDraft() { ui.draftSubject = true; refocusAfter('newsubj'); renderSubjects(); doRefocus(); }
+function closeDraft() { ui.draftSubject = false; ui.draftText = ''; renderSubjects(); }
+function draftCard() {
+  const err = h('p', { class: 'err', role: 'alert', style: 'flex-basis:100%;margin:0;min-height:0' });
+  const inp = h('input', { type: 'text', maxlength: '40', placeholder: '輸入科目名稱，例如：民法', 'aria-label': '新科目名稱', 'data-key': 'newsubj',
+    oninput: e => { ui.draftText = e.target.value; err.textContent = ''; },
+    onkeydown: e => { if (e.key === 'Escape') { e.preventDefault(); closeDraft(); } } });
+  imeGuard(inp);
+  inp.value = ui.draftText;
+  const go = () => {
+    const msg = nameError(inp.value.trim(), data.subjects);
+    if (msg) { err.textContent = msg === '名稱不可為空白' ? '請輸入科目名稱，或按「完成」結束新增' : msg; inp.focus(); return; }
+    addSubject(inp.value);
+  };
+  const box = h('div', { class: 'card draft' },
+    inp, h('button', { class: 'btn primary', type: 'button', onclick: go, 'aria-label': '確認新增這個科目' }, '新增'),
+    btn('完成', '', closeDraft, { 'aria-label': '結束新增科目' }), err);
+  enterToSubmit(box, go);
+  return box;
+}
+function renderSubjects() {
+  const list = $('#subjectList');
+  list.replaceChildren();
+  if (!data.subjects.length && !ui.draftSubject) { list.append(h('div', { class: 'empty' }, '還沒有科目。按上方「＋ 新增科目」建立第一個科目，再替它建立章節。')); return; }
+  for (const sj of data.subjects) {
+    const total = sj.chapters.length, done = sj.chapters.filter(c => c.done).length;
+    const pct = total ? Math.round(done / total * 100) : 0;
+    const open = !ui.collapsed.has(sj.id);
+    const addIn = h('input', { type: 'text', maxlength: '60', placeholder: '新增章節', 'aria-label': `為「${sj.name}」新增章節`, 'data-key': 'addch-' + sj.id });
+    const chErr = h('p', { class: 'err', role: 'alert', style: 'min-height:0' });
+    imeGuard(addIn); addIn.addEventListener('input', () => { chErr.textContent = ''; });
+    const goChapter = () => { chErr.textContent = addChapter(sj, addIn.value); if (chErr.textContent) addIn.focus(); };
+    const chRow = h('div', { class: 'row' }, addIn, h('button', { class: 'btn', type: 'button', onclick: goChapter, 'aria-label': `新增章節到「${sj.name}」` }, '新增'));
+    enterToSubmit(chRow, goChapter);
+    const card = h('div', { class: 'card' },
+      h('div', { class: 'subj-head' },
+        h('h3', null, sj.name),
+        btn(open ? '收合' : '展開', 'sm', () => { open ? ui.collapsed.add(sj.id) : ui.collapsed.delete(sj.id); renderSubjects(); }, { 'aria-expanded': String(open), 'aria-label': `${open ? '收合' : '展開'}「${sj.name}」的章節` })),
+      total
+        ? [h('div', { class: 'bar', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct), 'aria-label': `${sj.name} 完成率` }, h('i', { style: `width:${pct}%` })),
+           h('div', { class: 'muted small' }, `完成率 ${pct}%（${done} / ${total} 章）`)]
+        : h('div', { class: 'muted small', style: 'margin-top:6px' }, '尚未建立章節'),
+      open ? h('div', { class: 'chapters' },
+        sj.chapters.map(c => h('div', { class: 'chap' + (c.done ? ' done' : '') },
+          h('label', { class: 'check' },
+            h('input', { type: 'checkbox', checked: c.done ? '' : null, 'data-key': 'chk-' + c.id, 'aria-label': `${c.name} 已完成`,
+              onchange: e => { c.done = e.target.checked; save(); refocusAfter('chk-' + c.id); renderAll(); } }),
+            h('span', { class: 'cname' }, c.name)),
+          btn('去讀', 'sm green', () => pickTask(sj, c), { 'aria-label': `選「${c.name}」為現在要做的任務` }),
+          btn('改名', 'sm', () => renameChapter(sj, c), { 'aria-label': `重新命名章節「${c.name}」` }),
+          btn('刪除', 'sm danger', () => deleteChapter(sj, c), { 'aria-label': `刪除章節「${c.name}」` }))),
+        h('div', { style: 'margin-top:10px' },
+          chRow, chErr)) : null,
+      h('div', { class: 'subj-btns' },
+        btn('重新命名', 'sm', () => renameSubject(sj), { 'aria-label': `重新命名科目「${sj.name}」` }),
+        btn('刪除科目', 'sm danger', () => deleteSubject(sj), { 'aria-label': `刪除科目「${sj.name}」` })));
+    list.append(card);
+  }
+  if (ui.draftSubject) list.append(draftCard());
+}
+
+/* ========== 紀錄 ========== */
+function renderRecords() {
+  const sel = $('#recSubject');
+  sel.replaceChildren(h('option', { value: '' }, '全部科目'));
+  const seen = new Set();
+  data.subjects.forEach(x => { seen.add(x.id); sel.append(h('option', { value: x.id }, x.name)); });
+  data.records.forEach(r => { if (!seen.has(r.subjectId)) { seen.add(r.subjectId); sel.append(h('option', { value: r.subjectId }, r.subjectName + '（已刪除）')); } });
+  if (!seen.has(ui.rec.subject)) ui.rec.subject = '';
+  sel.value = ui.rec.subject;
+  $('#recFrom').value = ui.rec.from; $('#recTo').value = ui.rec.to;
+
+  let rs = [...data.records].sort((a, b) => b.startedAt - a.startedAt);
+  if (ui.rec.subject) rs = rs.filter(r => r.subjectId === ui.rec.subject);
+  if (ui.rec.from) rs = rs.filter(r => dateKey(r.startedAt) >= ui.rec.from);
+  if (ui.rec.to) rs = rs.filter(r => dateKey(r.startedAt) <= ui.rec.to);
+  const total = rs.reduce((a, r) => a + r.durationMin, 0);
+  $('#recSummary').textContent = rs.length ? `共 ${rs.length} 筆，合計 ${fmtMin(total)}` : '';
+  const list = $('#recList');
+  list.replaceChildren();
+  if (!rs.length) {
+    list.append(h('div', { class: 'empty' }, data.records.length ? '沒有符合條件的紀錄。' : '還沒有讀書紀錄。完成一個番茄鐘後，就會出現在這裡。'));
+    return;
+  }
+  rs.slice(0, ui.rec.limit).forEach(r => {
+    list.append(h('article', { class: 'card rec' },
+      h('div', { class: 'rec-top' }, h('strong', null, subjName(r)), h('span', { class: 'badge ' + (r.completed ? 'ok' : 'no') }, r.completed ? '完成' : '未完成')),
+      h('div', { class: 'muted small' }, `${dateKey(r.startedAt)} ${timeStr(r.startedAt)}・${r.durationMin} 分鐘` + (r.focusScore ? `・專注度 ${r.focusScore}/5` : '')),
+      h('div', null, r.contentText || '（未指定內容）'),
+      r.note ? h('div', { class: 'note muted' }, r.note) : null,
+      h('div', { class: 'rec-actions' }, btn('刪除', 'sm danger', () => {
+        confirmDialog({ title: '刪除這筆紀錄？', message: `${subjName(r)}・${dateKey(r.startedAt)} ${timeStr(r.startedAt)}・${r.durationMin} 分鐘\n刪除後無法復原。`, okLabel: '刪除', danger: true }, () => {
+          data.records = data.records.filter(x => x.id !== r.id); save(); renderAll(); toast('已刪除紀錄');
+        });
+      }, { 'aria-label': `刪除 ${dateKey(r.startedAt)} ${timeStr(r.startedAt)} 的紀錄` }))));
+  });
+  if (rs.length > ui.rec.limit) list.append(h('div', { style: 'text-align:center' }, btn(`顯示更多（剩 ${rs.length - ui.rec.limit} 筆）`, '', () => { ui.rec.limit += 100; renderRecords(); })));
+}
+
+/* ========== 統計 ========== */
+function dayStart(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function rangeBounds(kind) {
+  const now = new Date(), d0 = dayStart(now);
+  if (kind === 'today') return [d0.getTime(), new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() + 1).getTime()];
+  if (kind === 'week') {
+    const mon = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() - ((d0.getDay() + 6) % 7));
+    return [mon.getTime(), new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 7).getTime()];
+  }
+  if (kind === 'month') return [new Date(d0.getFullYear(), d0.getMonth(), 1).getTime(), new Date(d0.getFullYear(), d0.getMonth() + 1, 1).getTime()];
+  return [-Infinity, Infinity];
+}
+function renderStats() {
+  /* 今日摘要 */
+  const [ts, te] = rangeBounds('today');
+  const today = data.records.filter(r => r.startedAt >= ts && r.startedAt < te);
+  $('#statToday').replaceChildren(
+    h('div', null, h('div', { class: 'k' }, '完成番茄鐘'), h('div', { class: 'num' }, today.filter(r => r.completed).length + ' 個')),
+    h('div', null, h('div', { class: 'k' }, '總專注時間'), h('div', { class: 'num' }, fmtMin(today.reduce((a, r) => a + r.durationMin, 0)))));
+
+  /* 時間分配 */
+  document.querySelectorAll('#distSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.r === ui.distRange)));
+  const [ds, de] = rangeBounds(ui.distRange);
+  const groups = new Map();
+  data.records.forEach(r => {
+    if (r.startedAt < ds || r.startedAt >= de) return;
+    const g = groups.get(r.subjectId) || { name: subjName(r), min: 0 };
+    g.min += r.durationMin; groups.set(r.subjectId, g);
+  });
+  const arr = [...groups.values()].sort((a, b) => b.min - a.min);
+  const sum = arr.reduce((a, g) => a + g.min, 0);
+  const dist = $('#statDist');
+  dist.replaceChildren();
+  if (!arr.length) dist.append(h('div', { class: 'empty' }, '這個範圍內還沒有專注紀錄。'));
+  else arr.forEach(g => {
+    const pct = sum ? g.min / sum * 100 : 0;
+    dist.append(h('div', { class: 'dist-row' },
+      h('div', { class: 'line' }, h('strong', null, g.name), h('span', { class: 'muted' }, `${fmtMin(g.min)}・${Math.round(pct)}%`)),
+      h('div', { class: 'bar', role: 'img', 'aria-label': `${g.name} 占 ${Math.round(pct)}%` }, h('i', { style: `width:${pct.toFixed(1)}%` }))));
+  });
+  renderChart();
+}
+function renderChart() {
+  document.querySelectorAll('#chartSeg button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === ui.chartMode)));
+  const now = new Date(), d0 = dayStart(now), week = ui.chartMode === 'week';
+  const days = []; let label;
+  if (week) {
+    const mon = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate() - ((d0.getDay() + 6) % 7) + ui.chartOffset * 7);
+    for (let i = 0; i < 7; i++) days.push(new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + i));
+    label = `${days[0].getFullYear()}/${pad(days[0].getMonth() + 1)}/${pad(days[0].getDate())} – ${pad(days[6].getMonth() + 1)}/${pad(days[6].getDate())}`;
+  } else {
+    const first = new Date(d0.getFullYear(), d0.getMonth() + ui.chartOffset, 1);
+    const n = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+    for (let i = 1; i <= n; i++) days.push(new Date(first.getFullYear(), first.getMonth(), i));
+    label = `${first.getFullYear()} 年 ${first.getMonth() + 1} 月`;
+  }
+  $('#chartLabel').textContent = label;
+  $('#chartNext').disabled = ui.chartOffset >= 0;
+  const map = new Map();
+  data.records.forEach(r => { const k = dateKey(r.startedAt); map.set(k, (map.get(k) || 0) + r.durationMin); });
+  const vals = days.map(d => map.get(dateKey(d.getTime())) || 0);
+  const total = vals.reduce((a, b) => a + b, 0);
+  const box = $('#statChart');
+  box.replaceChildren();
+  if (!total) { box.append(h('div', { class: 'empty' }, '這段期間沒有讀書紀錄。')); return; }
+  const steps = [10, 20, 30, 40, 60, 90, 120, 180, 240, 300, 360, 480, 600, 720];
+  const mx = Math.max(...vals);
+  const max = steps.find(x => x >= mx) || Math.ceil(mx / 120) * 120;
+  const W = 360, H = 220, pl = 34, pr = 8, pt = 18, pb = week ? 36 : 26;
+  const pw = W - pl - pr, ph = H - pt - pb, slot = pw / days.length, bw = Math.min(30, slot * 0.64);
+  const svg = sv('svg', { class: 'chart', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `${label} 每日專注分鐘長條圖，合計 ${total} 分鐘` });
+  svg.append(sv('text', { x: 2, y: 10 }, '分鐘'));
+  [0, max / 2, max].forEach(v => {
+    const y = pt + ph * (1 - v / max);
+    svg.append(sv('line', { class: 'gl', x1: pl, x2: W - pr, y1: y, y2: y }), sv('text', { x: pl - 4, y: y + 3, 'text-anchor': 'end' }, String(Math.round(v))));
+  });
+  const wk = ['日', '一', '二', '三', '四', '五', '六'];
+  days.forEach((d, i) => {
+    const v = vals[i], x = pl + slot * i + (slot - bw) / 2, bh = ph * v / max, y = pt + ph - bh;
+    if (v > 0) svg.append(sv('rect', { class: 'br', x, y, width: bw, height: Math.max(bh, 1), rx: 2 }, sv('title', {}, `${d.getMonth() + 1}/${d.getDate()}：${v} 分鐘`)));
+    if (v > 0 && week) svg.append(sv('text', { x: x + bw / 2, y: y - 3, 'text-anchor': 'middle' }, String(v)));
+    const cx = x + bw / 2;
+    if (week) {
+      svg.append(sv('text', { x: cx, y: H - 20, 'text-anchor': 'middle' }, wk[d.getDay()]), sv('text', { x: cx, y: H - 8, 'text-anchor': 'middle' }, `${d.getMonth() + 1}/${d.getDate()}`));
+    } else {
+      const n = d.getDate();
+      if (n === 1 || n % 5 === 0) svg.append(sv('text', { x: cx, y: H - 10, 'text-anchor': 'middle' }, String(n)));
+    }
+  });
+  const activeDays = vals.filter(v => v > 0).length;
+  box.append(svg, h('div', { class: 'muted small', style: 'margin-top:8px' }, `合計 ${fmtMin(total)}・有讀書的天數 ${activeDays} 天`));
+}
+
+/* ========== 備份 / 匯出 ========== */
+function download(filename, blob) {
+  const url = URL.createObjectURL(blob);
+  const a = h('a', { href: url, download: filename, style: 'display:none' });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+function exportJSON() {
+  const out = { version: 1, exportedAt: new Date().toISOString(), settings: data.settings, subjects: data.subjects, records: data.records };
+  download(`pomodoro-backup-${dateKey(Date.now())}.json`, new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' }));
+  toast('已匯出 JSON 備份');
+}
+function csvCell(v) {
+  let s = String(v == null ? '' : v);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+function exportCSV() {
+  const head = ['日期', '開始時間', '科目', '內容', '專注分鐘', '是否完成', '專注度', '心得'];
+  const rows = [...data.records].sort((a, b) => a.startedAt - b.startedAt).map(r =>
+    [dateKey(r.startedAt), timeStr(r.startedAt), subjName(r), r.contentText, r.durationMin, r.completed ? '完成' : '未完成', r.focusScore == null ? '' : r.focusScore, r.note]);
+  const csv = [head, ...rows].map(row => row.map(csvCell).join(',')).join('\r\n');
+  download(`pomodoro-records-${dateKey(Date.now())}.csv`, new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }));
+  toast('已匯出 CSV');
+}
+function importJSONFile(file) {
+  const reader = new FileReader();
+  reader.onerror = () => showImportError('無法讀取檔案');
+  reader.onload = () => {
+    let next;
+    try { next = validateData(JSON.parse(String(reader.result))); }
+    catch (e) { showImportError(e instanceof SyntaxError ? '檔案不是有效的 JSON' : e.message); return; }
+    confirmDialog({
+      title: '匯入並還原資料？',
+      message: `將覆蓋目前所有資料（科目、章節、紀錄、設定），進行中的計時也會被清除。\n\n備份內容：${next.subjects.length} 個科目、${next.records.length} 筆紀錄。`,
+      okLabel: '覆蓋並還原', danger: true
+    }, () => {
+      data = next; ui.sel = { subjectId: '', chapterVal: '', free: '' };
+      save(); applyTheme(); renderAll(); updateClock(); toast('已還原備份資料');
+    });
+  };
+  reader.readAsText(file);
+}
+function showImportError(msg) {
+  openModal({ title: '匯入失敗', content: h('p', { style: 'margin:0' }, `${msg}。\n目前的資料沒有被更動。`.replace('。\n', '。 ')), actions: [{ label: '知道了', cls: 'primary' }] });
+}
+function openSettings() {
+  const themeSel = h('select', { 'aria-label': '外觀模式' },
+    h('option', { value: 'system' }, '跟隨系統'), h('option', { value: 'light' }, '淺色'), h('option', { value: 'dark' }, '深色'));
+  themeSel.value = data.settings.theme;
+  themeSel.addEventListener('change', () => { data.settings.theme = themeSel.value; save(); applyTheme(); });
+  openModal({
+    title: '設定與備份',
+    content: h('div', null,
+      h('div', { class: 'sect' }, h('h3', { style: 'margin-bottom:6px' }, '外觀'), h('label', { class: 'field' }, h('span', null, '深淺色'), themeSel)),
+      h('div', { class: 'sect' }, h('h3', { style: 'margin-bottom:6px' }, '資料備份'),
+        h('p', { class: 'hint', style: 'margin:0 0 10px' }, '資料只存放在這個瀏覽器中，清除瀏覽器資料會消失，請定期匯出備份。'),
+        h('div', { class: 'stack' },
+          btn('匯出 JSON 備份', '', exportJSON),
+          btn('匯入 JSON 還原', '', () => $('#importFile').click()),
+          btn('匯出讀書紀錄 CSV', '', exportCSV)))),
+    actions: [{ label: '關閉', cls: 'primary' }]
+  });
+}
+
+/* ========== 渲染與事件 ========== */
+function renderAll() {
+  renderTimer(); renderSubjects(); renderRecords(); renderStats(); doRefocus();
+}
+function switchTab(name) {
+  ui.tab = name;
+  document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
+  ['timer', 'subjects', 'records', 'stats'].forEach(n => { $('#view-' + n).hidden = n !== name; });
+  renderAll();
+}
+function syncFromStorage() {
+  if (!storageOk) return;
+  let raw;
+  try { raw = localStorage.getItem(KEY); } catch (e) { return; }
+  if (raw == null || raw === lastRaw) return;
+  try {
+    const o = JSON.parse(raw), d = validateData(o);
+    d.timer = sanitizeTimer(o.timer);
+    data = d; lastRaw = raw;
+    if (pendingModal && (!data.timer || data.timer.state !== 'pending')) { pendingModal.close(); pendingModal = null; }
+    applyTheme(); renderAll(); updateClock();
+    if (data.timer && data.timer.state === 'pending' && !pendingModal) openRecordForm('complete');
+  } catch (e) { /* 忽略無法解析的外部變更 */ }
+}
+
+function init() {
+  data = loadData();
+  applyTheme();
+  /* 預設選用最近一次紀錄的科目 */
+  const last = [...data.records].sort((a, b) => b.startedAt - a.startedAt).find(r => getSubject(r.subjectId));
+  if (last) ui.sel.subjectId = last.subjectId;
+
+  document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+  $('#themeBtn').addEventListener('click', () => { data.settings.theme = effectiveTheme() === 'dark' ? 'light' : 'dark'; save(); applyTheme(); });
+  $('#settingsBtn').addEventListener('click', openSettings);
+  $('#warnExport').addEventListener('click', exportJSON);
+  $('#addSubjectBtn').addEventListener('click', () => {
+    const el = ui.draftSubject && document.querySelector('[data-key="newsubj"]');
+    if (el) el.focus(); else openDraft();
+  });
+  $('#recSubject').addEventListener('change', e => { ui.rec.subject = e.target.value; ui.rec.limit = 100; renderRecords(); });
+  $('#recFrom').addEventListener('change', e => { ui.rec.from = e.target.value; ui.rec.limit = 100; renderRecords(); });
+  $('#recTo').addEventListener('change', e => { ui.rec.to = e.target.value; ui.rec.limit = 100; renderRecords(); });
+  $('#recClear').addEventListener('click', () => { ui.rec = { subject: '', from: '', to: '', limit: 100 }; renderRecords(); });
+  document.querySelectorAll('#distSeg button').forEach(b => b.addEventListener('click', () => { ui.distRange = b.dataset.r; renderStats(); }));
+  document.querySelectorAll('#chartSeg button').forEach(b => b.addEventListener('click', () => { ui.chartMode = b.dataset.m; ui.chartOffset = 0; renderStats(); }));
+  $('#chartPrev').addEventListener('click', () => { ui.chartOffset--; renderChart(); });
+  $('#chartNext').addEventListener('click', () => { if (ui.chartOffset < 0) { ui.chartOffset++; renderChart(); } });
+  $('#importFile').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) importJSONFile(f); });
+
+  window.addEventListener('focus', () => { syncFromStorage(); tick(); });
+  window.addEventListener('storage', e => { if (e.key === KEY) syncFromStorage(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { syncFromStorage(); tick(); } });
+
+  /* 還原計時狀態 */
+  let restoredMsg = '';
+  const t = data.timer, now = Date.now();
+  if (t) {
+    if (t.state === 'focus' && t.endAt <= now) { t.state = 'pending'; t.remainingMs = 0; restoredMsg = '上次的專注已經結束，請補填結果以儲存紀錄'; }
+    else if (t.state === 'break' && t.endAt <= now) data.timer = null;
+    else if (t.state === 'focus' || t.state === 'focusPaused') restoredMsg = '已還原上次進行中的計時';
+    else if (t.state === 'pending') restoredMsg = '有一筆尚未儲存的完成專注，請補填結果';
+  }
+  save();
+  renderAll();
+  if (restoredMsg) toast(restoredMsg, 4500);
+  if (data.timer && data.timer.state === 'pending') openRecordForm('complete');
+  setInterval(tick, 250);
+
+  if (corruptNotice) {
+    openModal({ title: '資料讀取失敗', content: h('p', { style: 'margin:0' }, '先前儲存的資料格式損毀，已重設為空白狀態。原始內容已另存於瀏覽器的 pomodoro-study-v1-corrupt-backup 欄位。'), actions: [{ label: '知道了', cls: 'primary' }] });
+  }
+  let seen = true;
+  try { seen = !!localStorage.getItem(SEEN_KEY); } catch (e) {}
+  if (!seen) {
+    openModal({
+      title: '歡迎使用番茄鐘',
+      content: h('p', { style: 'margin:0' }, '你的資料只存放在這個瀏覽器中，清除瀏覽器資料就會消失。請定期到右上角「⚙ 設定」匯出備份。'),
+      actions: [{ label: '我知道了', cls: 'primary', onClick: () => { try { localStorage.setItem(SEEN_KEY, '1'); } catch (e) {} } }],
+      onDismiss: () => { try { localStorage.setItem(SEEN_KEY, '1'); } catch (e) {} }
+    });
+  }
+}
+init();
+</script>
+</body>
+</html>
